@@ -30,6 +30,20 @@ func main() {
 }
 ```
 
+Test
+---
+
+```
+$ go test
+```
+
+Benchmark
+---
+
+```
+$ go test -bench .
+```
+
 Feature
 ---
 
