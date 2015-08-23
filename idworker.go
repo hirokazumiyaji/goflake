@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sync"
 	"time"
 )
 
@@ -21,12 +22,33 @@ const (
 
 var re = regexp.MustCompile(`(^[a-zA-Z][a-zA-Z\-0-9]*)`)
 
+type counter struct {
+	mu    *sync.RWMutex
+	value uint64
+}
+
+func (c *counter) Value() uint64 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.value
+}
+
+func (c *counter) Incr(amount int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.value += uint64(amount)
+}
+
 type IdWorker struct {
 	workerId      uint16
 	datacenterId  uint16
 	lastTimestamp int64
 	sequence      uint32
 	epoch         int64
+	mutex         *sync.Mutex
+
+	genCounter       *counter
+	exceptionCounter *counter
 }
 
 func NewIdWorker(workerId, datacenterId uint16, startTime time.Time) (*IdWorker, error) {
@@ -39,16 +61,20 @@ func NewIdWorker(workerId, datacenterId uint16, startTime time.Time) (*IdWorker,
 	}
 
 	return &IdWorker{
-		workerId:      workerId,
-		datacenterId:  datacenterId,
-		lastTimestamp: -1,
-		sequence:      0,
-		epoch:         startTime.UTC().UnixNano(),
+		workerId:         workerId,
+		datacenterId:     datacenterId,
+		lastTimestamp:    -1,
+		sequence:         0,
+		epoch:            startTime.UTC().UnixNano(),
+		mutex:            new(sync.Mutex),
+		genCounter:       &counter{mu: new(sync.RWMutex), value: 0},
+		exceptionCounter: &counter{mu: new(sync.RWMutex), value: 0},
 	}, nil
 }
 
 func (iw *IdWorker) GetId(useragent string) (uint64, error) {
 	if !validUseragent(useragent) {
+		iw.exceptionCounter.Incr(1)
 		return 0, errors.New("invalid useragent")
 	}
 
@@ -65,6 +91,8 @@ func (iw *IdWorker) GetDatacenterId() uint16 {
 }
 
 func (iw *IdWorker) NextId() (uint64, error) {
+	iw.mutex.Lock()
+	defer iw.mutex.Unlock()
 	timestamp := timeGen()
 
 	if iw.lastTimestamp == timestamp {
@@ -77,11 +105,12 @@ func (iw *IdWorker) NextId() (uint64, error) {
 	}
 
 	if timestamp < iw.lastTimestamp {
+		iw.exceptionCounter.Incr(1)
 		return 0, errors.New(fmt.Sprintf("Clock moved backwards.  Refusing to generate id for %d milliseconds", iw.lastTimestamp-timestamp))
 	}
 
 	iw.lastTimestamp = timestamp
-
+	iw.genCounter.Incr(1)
 	return (uint64(timestamp-iw.epoch) << timestampLeftShift) |
 		(uint64(iw.datacenterId) << datacenterIdShift) |
 		(uint64(iw.workerId) << workerIdShift) |
