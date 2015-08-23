@@ -118,11 +118,13 @@ func TestGenerateOnlyUniqueIds(t *testing.T) {
 	worker, _ := NewIdWorker(31, 31, startTime)
 	set := map[uint64]bool{}
 	for i := 0; i < 2000000; i++ {
-		id, _ := worker.NextId()
-		if set[id] {
-			t.Errorf("not unique %d", id)
-		} else {
-			set[id] = true
+		id, err := worker.NextId()
+		if err == nil {
+			if set[id] {
+				t.Errorf("not unique %d", id)
+			} else {
+				set[id] = true
+			}
 		}
 	}
 }
