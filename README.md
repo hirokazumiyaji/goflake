@@ -43,10 +43,3 @@ Benchmark
 ```
 $ go test -bench .
 ```
-
-Feature
----
-
-Generate ID Response Server
-* JSON Web API Server
-* gRPC Server
