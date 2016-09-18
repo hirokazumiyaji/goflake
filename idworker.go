@@ -9,14 +9,14 @@ import (
 )
 
 const (
-	workerIdBits       = 5
-	datacenterIdBits   = 5
-	maxWorkerId        = -1 ^ (-1 << workerIdBits)
-	maxDatacenterId    = -1 ^ (-1 << datacenterIdBits)
+	workerIDBits       = 5
+	datacenterIDBits   = 5
+	maxWorkerID        = -1 ^ (-1 << workerIDBits)
+	maxDatacenterID    = -1 ^ (-1 << datacenterIDBits)
 	sequenceBits       = 12
-	workerIdShift      = sequenceBits
-	datacenterIdShift  = sequenceBits + workerIdBits
-	timestampLeftShift = sequenceBits + workerIdBits + datacenterIdBits
+	workerIDShift      = sequenceBits
+	datacenterIDShift  = sequenceBits + workerIDBits
+	timestampLeftShift = sequenceBits + workerIDBits + datacenterIDBits
 	sequenceMask       = -1 ^ (-1 << sequenceBits)
 )
 
@@ -39,9 +39,9 @@ func (c *counter) Incr(amount int) {
 	c.value += uint64(amount)
 }
 
-type IdWorker struct {
-	workerId      uint16
-	datacenterId  uint16
+type IDWorker struct {
+	workerID      uint16
+	datacenterID  uint16
 	lastTimestamp int64
 	sequence      uint32
 	epoch         int64
@@ -51,18 +51,18 @@ type IdWorker struct {
 	exceptionCounter *counter
 }
 
-func NewIdWorker(workerId, datacenterId uint16, startTime time.Time) (*IdWorker, error) {
-	if workerId > maxWorkerId || workerId < 0 {
-		return nil, errors.New(fmt.Sprintf("worker Id can't be greater than %d or less than 0", workerId))
+func NewIDWorker(workerID, datacenterID uint16, startTime time.Time) (*IDWorker, error) {
+	if workerID > maxWorkerID || workerID < 0 {
+		return nil, errors.New(fmt.Sprintf("worker ID can't be greater than %d or less than 0", workerID))
 	}
 
-	if datacenterId > maxDatacenterId || datacenterId < 0 {
-		return nil, errors.New(fmt.Sprintf("datacenter Id can't be greater than %d or less than 0", datacenterId))
+	if datacenterID > maxDatacenterID || datacenterID < 0 {
+		return nil, errors.New(fmt.Sprintf("datacenter ID can't be greater than %d or less than 0", datacenterID))
 	}
 
-	return &IdWorker{
-		workerId:         workerId,
-		datacenterId:     datacenterId,
+	return &IDWorker{
+		workerID:         workerID,
+		datacenterID:     datacenterID,
 		lastTimestamp:    -1,
 		sequence:         0,
 		epoch:            startTime.UTC().UnixNano(),
@@ -72,25 +72,25 @@ func NewIdWorker(workerId, datacenterId uint16, startTime time.Time) (*IdWorker,
 	}, nil
 }
 
-func (iw *IdWorker) GetId(useragent string) (uint64, error) {
+func (iw *IDWorker) GetID(useragent string) (uint64, error) {
 	if !validUseragent(useragent) {
 		iw.exceptionCounter.Incr(1)
 		return 0, errors.New("invalid useragent")
 	}
 
-	id, err := iw.NextId()
+	id, err := iw.NextID()
 	return id, err
 }
 
-func (iw *IdWorker) GetWorkerId() uint16 {
-	return iw.workerId
+func (iw *IDWorker) GetWorkerID() uint16 {
+	return iw.workerID
 }
 
-func (iw *IdWorker) GetDatacenterId() uint16 {
-	return iw.datacenterId
+func (iw *IDWorker) GetDatacenterID() uint16 {
+	return iw.datacenterID
 }
 
-func (iw *IdWorker) NextId() (uint64, error) {
+func (iw *IDWorker) NextID() (uint64, error) {
 	iw.mutex.Lock()
 	defer iw.mutex.Unlock()
 	timestamp := timeGen()
@@ -112,8 +112,8 @@ func (iw *IdWorker) NextId() (uint64, error) {
 	iw.lastTimestamp = timestamp
 	iw.genCounter.Incr(1)
 	return (uint64(timestamp-iw.epoch) << timestampLeftShift) |
-		(uint64(iw.datacenterId) << datacenterIdShift) |
-		(uint64(iw.workerId) << workerIdShift) |
+		(uint64(iw.datacenterID) << datacenterIDShift) |
+		(uint64(iw.workerID) << workerIDShift) |
 		uint64(iw.sequence), nil
 }
 
